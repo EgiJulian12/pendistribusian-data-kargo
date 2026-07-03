@@ -69,6 +69,44 @@ services:
     networks:
       - logistik-net
 
+  web-barat:
+    image: nginx:alpine
+    container_name: web-barat
+    volumes:
+      - ./web-barat:/usr/share/nginx/html:ro
+    networks:
+      - logistik-net
+
+  web-tengah:
+    image: nginx:alpine
+    container_name: web-tengah
+    volumes:
+      - ./web-tengah:/usr/share/nginx/html:ro
+    networks:
+      - logistik-net
+
+  web-timur:
+    image: nginx:alpine
+    container_name: web-timur
+    volumes:
+      - ./web-timur:/usr/share/nginx/html:ro
+    networks:
+      - logistik-net
+
+  nginx-main:
+    image: nginx:alpine
+    container_name: nginx-main
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "8080:80"
+    depends_on:
+      - web-barat
+      - web-tengah
+      - web-timur
+    networks:
+      - logistik-net
+
 volumes:
   pg-pusat-data:
   pg-barat-data:

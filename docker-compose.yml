@@ -1,0 +1,68 @@
+
+networks:
+  logistik-net:
+    driver: bridge
+
+services:
+
+  pg-pusat:
+    image: postgres:16
+    container_name: pg-pusat
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: pusat123
+      POSTGRES_DB: logistik_pusat
+    ports:
+      - "5440:5432"
+    networks:
+      - logistik-net
+    volumes:
+      - pg-pusat-data:/var/lib/postgresql/data
+
+  pg-barat:
+    image: postgres:16
+    container_name: pg-barat
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: barat123
+      POSTGRES_DB: logistik_barat
+    ports:
+      - "5441:5432"
+    networks:
+      - logistik-net
+    volumes:
+      - pg-barat-data:/var/lib/postgresql/data
+
+  pg-tengah:
+    image: postgres:16
+    container_name: pg-tengah
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: tengah123
+      POSTGRES_DB: logistik_tengah
+    ports:
+      - "5442:5432"
+    networks:
+      - logistik-net
+    volumes:
+      - pg-tengah-data:/var/lib/postgresql/data
+
+  pg-timur:
+    image: postgres:16
+    container_name: pg-timur
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: timur123
+      POSTGRES_DB: logistik_timur
+    ports:
+      - "5443:5432"
+    networks:
+      - logistik-net
+    volumes:
+      - pg-timur-data:/var/lib/postgresql/data
+
+volumes:
+  pg-pusat-data:
+  pg-barat-data:
+  pg-tengah-data:
+  pg-timur-data:

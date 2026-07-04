@@ -1,0 +1,152 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Redis;
+
+class TrackingController extends Controller
+{
+    public function index()
+    {
+        return view('tracking');
+    }
+
+    public function search(Request $request)
+    {
+        $resi = strtoupper(trim($request->input('nomor_resi')));
+        $cacheKey = "resi:$resi";
+
+        // ===== Global Query Optimization: cek Redis dulu =====
+        $cached = Redis::get($cacheKey);
+
+        if ($cached) {
+            $data = json_decode($cached, true);
+            return view('tracking', [
+                'kargo' => (object) $data,
+                'region' => $data['_region'],
+                'dari_cache' => true,
+            ]);
+        }
+
+        // ===== Cache miss: lanjut ke PostgreSQL =====
+        $koneksi = $this->tentukanRegion($resi);
+
+        if (!$koneksi) {
+            return back()->with('error', 'Format nomor resi tidak dikenali.');
+        }
+
+        $kargo = DB::connection($koneksi['nama_koneksi'])
+            ->table('kargo')
+            ->where('nomor_resi', $resi)
+            ->first();
+
+        if (!$kargo) {
+            return back()->with('error', "Nomor resi $resi tidak ditemukan di {$koneksi['label']}.");
+        }
+
+        // Simpan ke Redis untuk request berikutnya, kadaluarsa 5 menit
+        $dataArray = (array) $kargo;
+        $dataArray['_region'] = $koneksi['label'];
+        Redis::set($cacheKey, json_encode($dataArray));
+        Redis::expire($cacheKey, 300);
+
+        return view('tracking', [
+            'kargo' => $kargo,
+            'region' => $koneksi['label'],
+            'dari_cache' => false,
+        ]);
+    }
+
+    private function tentukanRegion(string $resi): ?array
+    {
+        if (str_contains($resi, 'BRT')) {
+            return ['nama_koneksi' => 'pgsql_barat', 'label' => 'Region Barat'];
+        }
+        if (str_contains($resi, 'TGH')) {
+            return ['nama_koneksi' => 'pgsql_tengah', 'label' => 'Region Tengah'];
+        }
+        if (str_contains($resi, 'TMR')) {
+            return ['nama_koneksi' => 'pgsql_timur', 'label' => 'Region Timur'];
+        }
+        return null;
+    }
+
+    public function pindahForm()
+    {
+        return view('pindah_kargo');
+    }
+
+    public function pindahProses(Request $request)
+    {
+        $resi = strtoupper(trim($request->input('nomor_resi')));
+        $tujuanRegion = $request->input('tujuan_region');
+
+        $asal = $this->tentukanRegion($resi);
+        if (!$asal) {
+            return back()->with('error', 'Nomor resi tidak dikenali.');
+        }
+
+        $petaTujuan = [
+            'barat'  => ['nama_koneksi' => 'pgsql_barat', 'label' => 'Region Barat', 'kode' => 'Barat'],
+            'tengah' => ['nama_koneksi' => 'pgsql_tengah', 'label' => 'Region Tengah', 'kode' => 'Tengah'],
+            'timur'  => ['nama_koneksi' => 'pgsql_timur', 'label' => 'Region Timur', 'kode' => 'Timur'],
+        ];
+        $tujuan = $petaTujuan[$tujuanRegion] ?? null;
+
+        if (!$tujuan) {
+            return back()->with('error', 'Region tujuan tidak valid.');
+        }
+        if ($tujuan['nama_koneksi'] === $asal['nama_koneksi']) {
+            return back()->with('error', 'Region tujuan tidak boleh sama dengan region asal.');
+        }
+
+        $kargo = DB::connection($asal['nama_koneksi'])->table('kargo')->where('nomor_resi', $resi)->first();
+        if (!$kargo) {
+            return back()->with('error', "Resi $resi tidak ditemukan di {$asal['label']}.");
+        }
+        if ($kargo->status === 'Terkirim') {
+            return back()->with('error', "Kargo $resi sudah berstatus Terkirim, tidak bisa dipindah lagi.");
+        }
+
+        $gid = 'web_' . $resi . '_' . time();
+        $pdoAsal = DB::connection($asal['nama_koneksi'])->getPdo();
+        $pdoTujuan = DB::connection($tujuan['nama_koneksi'])->getPdo();
+
+        try {
+            // ===== FASE 1: PREPARE di kedua sisi =====
+            $pdoAsal->exec("BEGIN");
+            $pdoAsal->exec("UPDATE kargo SET status = 'Terkirim' WHERE nomor_resi = " . $pdoAsal->quote($resi));
+            $pdoAsal->exec("PREPARE TRANSACTION " . $pdoAsal->quote($gid));
+
+            $pdoTujuan->exec("BEGIN");
+            $sql = sprintf(
+                "INSERT INTO kargo (nomor_resi, asal_pengiriman, tujuan_pengiriman, berat, status, region_fragment) VALUES (%s, %s, %s, %s, %s, %s)",
+                $pdoTujuan->quote($kargo->nomor_resi),
+                $pdoTujuan->quote($kargo->asal_pengiriman),
+                $pdoTujuan->quote($kargo->tujuan_pengiriman),
+                $kargo->berat,
+                $pdoTujuan->quote('Diterima'),
+                $pdoTujuan->quote($tujuan['kode'])
+            );
+            $pdoTujuan->exec($sql);
+            $pdoTujuan->exec("PREPARE TRANSACTION " . $pdoTujuan->quote($gid));
+
+            // ===== FASE 2: COMMIT di kedua sisi =====
+            $pdoAsal->exec("COMMIT PREPARED " . $pdoAsal->quote($gid));
+            $pdoTujuan->exec("COMMIT PREPARED " . $pdoTujuan->quote($gid));
+
+            return back()->with('success', "Kargo $resi berhasil dipindahkan dari {$asal['label']} ke {$tujuan['label']} (via 2PC).");
+
+        } catch (\Throwable $e) {
+            // ===== ABORT: rollback prepared di kedua sisi =====
+            try { $pdoAsal->exec("ROLLBACK PREPARED " . $pdoAsal->quote($gid)); } catch (\Throwable $e2) {}
+            try { $pdoTujuan->exec("ROLLBACK PREPARED " . $pdoTujuan->quote($gid)); } catch (\Throwable $e2) {}
+            try { $pdoAsal->exec("ROLLBACK"); } catch (\Throwable $e2) {}
+            try { $pdoTujuan->exec("ROLLBACK"); } catch (\Throwable $e2) {}
+
+            return back()->with('error', "Transaksi dibatalkan (2PC rollback). Sebab: " . $e->getMessage());
+        }
+    }
+}

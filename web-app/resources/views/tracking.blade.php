@@ -1,99 +1,57 @@
-<!DOCTYPE html>
-<html lang="id">
+@extends('layouts.app')
 
-<head>
-    <meta charset="UTF-8">
-    <title>Pelacakan Kargo - Sistem Logistik Nasional</title>
-    <style>
-        body {
-            font-family: sans-serif;
-            max-width: 600px;
-            margin: 60px auto;
-            padding: 0 20px;
-        }
+@section('title', 'Lacak Kargo')
 
-        h1 {
-            color: #2d3748;
-        }
+@section('content')
+    <div class="eyebrow">Distributed Tracking Query</div>
+    <h1 style="font-size:32px;margin-bottom:8px;">Lacak Kargo</h1>
+    <p style="color:var(--text-soft);margin-bottom:28px;font-size:15px;">Masukkan nomor resi — sistem otomatis mendeteksi region penyimpanan data dari kodenya.</p>
 
-        form {
-            margin-bottom: 24px;
-        }
-
-        input[type=text] {
-            padding: 10px;
-            width: 70%;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-        }
-
-        button {
-            padding: 10px 20px;
-            background: #2563eb;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-        }
-
-        .hasil {
-            background: #f0fdf4;
-            border: 1px solid #86efac;
-            padding: 16px;
-            border-radius: 8px;
-            margin-top: 16px;
-        }
-
-        .error {
-            background: #fef2f2;
-            border: 1px solid #fca5a5;
-            padding: 16px;
-            border-radius: 8px;
-            margin-top: 16px;
-            color: #991b1b;
-        }
-
-        .label-region {
-            display: inline-block;
-            background: #dbeafe;
-            color: #1e40af;
-            padding: 4px 10px;
-            border-radius: 4px;
-            font-size: 13px;
-        }
-    </style>
-</head>
-
-<body>
-    <h1>📦 Pelacakan Kargo Nasional</h1>
-    <p>Masukkan nomor resi untuk melihat status pengiriman.</p>
-
-    <form action="{{ route('tracking.search') }}" method="POST">
-        @csrf
-        <input type="text" name="nomor_resi" placeholder="Contoh: RESIBRT001" required>
-        <button type="submit">Lacak</button>
-    </form>
-
-    @if (session('error'))
-        <div class="error">{{ session('error') }}</div>
-    @endif
+    <div class="card" style="margin-bottom:24px;">
+        <form action="{{ route('tracking.search') }}" method="POST" style="display:flex;gap:12px;">
+            @csrf
+            <input type="text" name="nomor_resi" placeholder="Contoh: RESIBRT001" required style="flex:1;">
+            <button type="submit" class="btn-primary" style="white-space:nowrap;">Lacak Kargo</button>
+        </form>
+    </div>
 
     @if (isset($kargo))
-        <div class="hasil">
-            <span class="label-region">📍 Diambil dari: {{ $region }}</span>
-            @if ($dari_cache)
-                <span class="label-region" style="background:#fef9c3;color:#854d0e;">⚡ Dari Cache (Redis)</span>
-            @else
-                <span class="label-region" style="background:#e0e7ff;color:#3730a3;">🗄️ Dari Database (PostgreSQL)</span>
-            @endif
-            <h3>Nomor Resi: {{ $kargo->nomor_resi }}</h3>
-            <p><b>Status:</b> {{ $kargo->status }}</p>
-            <p><b>Asal:</b> {{ $kargo->asal_pengiriman }}</p>
-            <p><b>Tujuan:</b> {{ $kargo->tujuan_pengiriman }}</p>
-            <p><b>Berat:</b> {{ $kargo->berat }} kg</p>
-            <p><b>Tanggal Kirim:</b> {{ $kargo->tanggal_kirim }}</p>
+        <div class="card">
+            <div style="display:flex;gap:8px;margin-bottom:18px;">
+                @php
+                    $regionClass = str_contains($region, 'Barat') ? 'barat' : (str_contains($region, 'Tengah') ? 'tengah' : 'timur');
+                @endphp
+                <span class="tag-region {{ $regionClass }}">📍 {{ $region }}</span>
+                @if ($dari_cache)
+                    <span class="pill terkirim">⚡ Dari Cache Redis</span>
+                @else
+                    <span class="pill diproses">🗄️ Dari Database PostgreSQL</span>
+                @endif
+            </div>
+
+            <h2 style="font-size:24px;font-family:'Inter',sans-serif;letter-spacing:0.02em;">{{ $kargo->nomor_resi }}</h2>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px;">
+                <div>
+                    <div style="font-size:12px;color:var(--text-soft);font-weight:600;margin-bottom:4px;">STATUS</div>
+                    @php
+                        $statusClass = $kargo->status === 'Terkirim' ? 'terkirim' : ($kargo->status === 'Diterima' ? 'diterima' : 'diproses');
+                    @endphp
+                    <span class="pill {{ $statusClass }}">{{ $kargo->status }}</span>
+                </div>
+                <div>
+                    <div style="font-size:12px;color:var(--text-soft);font-weight:600;margin-bottom:4px;">BERAT</div>
+                    <div style="font-weight:600;">{{ $kargo->berat }} kg</div>
+                </div>
+                <div>
+                    <div style="font-size:12px;color:var(--text-soft);font-weight:600;margin-bottom:4px;">ASAL</div>
+                    <div style="font-weight:600;">{{ $kargo->asal_pengiriman }}</div>
+                </div>
+                <div>
+                    <div style="font-size:12px;color:var(--text-soft);font-weight:600;margin-bottom:4px;">TUJUAN</div>
+                    <div style="font-weight:600;">{{ $kargo->tujuan_pengiriman }}</div>
+                </div>
+            </div>
         </div>
     @endif
-</body>
-
-</html>
+@endsection

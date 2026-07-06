@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\RegionResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
 
 class TrackingController extends Controller
 {
+    
     public function index()
     {
         return view('tracking');
@@ -31,7 +33,7 @@ class TrackingController extends Controller
         }
 
         // ===== Cache miss: lanjut ke PostgreSQL =====
-        $koneksi = $this->tentukanRegion($resi);
+        $koneksi = RegionResolver::dariResi($resi);
 
         if (!$koneksi) {
             return back()->with('error', 'Format nomor resi tidak dikenali.');
@@ -59,20 +61,6 @@ class TrackingController extends Controller
         ]);
     }
 
-    private function tentukanRegion(string $resi): ?array
-    {
-        if (str_contains($resi, 'BRT')) {
-            return ['nama_koneksi' => 'pgsql_barat', 'label' => 'Region Barat'];
-        }
-        if (str_contains($resi, 'TGH')) {
-            return ['nama_koneksi' => 'pgsql_tengah', 'label' => 'Region Tengah'];
-        }
-        if (str_contains($resi, 'TMR')) {
-            return ['nama_koneksi' => 'pgsql_timur', 'label' => 'Region Timur'];
-        }
-        return null;
-    }
-
     public function pindahForm()
     {
         return view('pindah_kargo');
@@ -83,18 +71,12 @@ class TrackingController extends Controller
         $resi = strtoupper(trim($request->input('nomor_resi')));
         $tujuanRegion = $request->input('tujuan_region');
 
-        $asal = $this->tentukanRegion($resi);
+        $asal = RegionResolver::dariResi($resi);
         if (!$asal) {
             return back()->with('error', 'Nomor resi tidak dikenali.');
         }
 
-        $petaTujuan = [
-            'barat'  => ['nama_koneksi' => 'pgsql_barat', 'label' => 'Region Barat', 'kode' => 'Barat'],
-            'tengah' => ['nama_koneksi' => 'pgsql_tengah', 'label' => 'Region Tengah', 'kode' => 'Tengah'],
-            'timur'  => ['nama_koneksi' => 'pgsql_timur', 'label' => 'Region Timur', 'kode' => 'Timur'],
-        ];
-        $tujuan = $petaTujuan[$tujuanRegion] ?? null;
-
+        $tujuan = RegionResolver::dariKey($tujuanRegion);
         if (!$tujuan) {
             return back()->with('error', 'Region tujuan tidak valid.');
         }

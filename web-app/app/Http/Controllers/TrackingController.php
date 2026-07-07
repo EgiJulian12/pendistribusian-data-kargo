@@ -9,7 +9,10 @@ use Illuminate\Support\Facades\Redis;
 
 class TrackingController extends Controller
 {
-    
+    // Format resi: RESI + kode region (BRT/TGH/TMR) + 3 digit angka. Contoh: RESIBRT001
+    private const POLA_RESI = '/^RESI(BRT|TGH|TMR)[0-9]{3,}$/';
+
+    // FITUR 1: Distributed Tracking Query (dengan Redis cache)
     public function index()
     {
         return view('tracking');
@@ -17,10 +20,21 @@ class TrackingController extends Controller
 
     public function search(Request $request)
     {
+        $request->validate([
+            'nomor_resi' => ['required', 'string', 'max:20'],
+        ], [
+            'nomor_resi.required' => 'Nomor resi wajib diisi.',
+        ]);
+
         $resi = strtoupper(trim($request->input('nomor_resi')));
+
+        if (!preg_match(self::POLA_RESI, $resi)) {
+            return back()->with('error', "Format nomor resi tidak valid. Gunakan format seperti RESIBRT001.");
+        }
+
         $cacheKey = "resi:$resi";
 
-        // ===== Global Query Optimization: cek Redis dulu =====
+        // Global Query Optimization: cek Redis dulu 
         $cached = Redis::get($cacheKey);
 
         if ($cached) {
@@ -32,7 +46,7 @@ class TrackingController extends Controller
             ]);
         }
 
-        // ===== Cache miss: lanjut ke PostgreSQL =====
+        // Cache miss: lanjut ke PostgreSQL 
         $koneksi = RegionResolver::dariResi($resi);
 
         if (!$koneksi) {
@@ -61,6 +75,8 @@ class TrackingController extends Controller
         ]);
     }
 
+   
+    // FITUR 2: Cross-Regional Transaction (Two-Phase Commit)
     public function pindahForm()
     {
         return view('pindah_kargo');
@@ -68,7 +84,21 @@ class TrackingController extends Controller
 
     public function pindahProses(Request $request)
     {
+        $request->validate([
+            'nomor_resi' => ['required', 'string', 'max:20'],
+            'tujuan_region' => ['required', 'in:barat,tengah,timur'],
+        ], [
+            'nomor_resi.required' => 'Nomor resi wajib diisi.',
+            'tujuan_region.required' => 'Region tujuan wajib dipilih.',
+            'tujuan_region.in' => 'Region tujuan tidak valid.',
+        ]);
+
         $resi = strtoupper(trim($request->input('nomor_resi')));
+
+        if (!preg_match(self::POLA_RESI, $resi)) {
+            return back()->with('error', "Format nomor resi tidak valid. Gunakan format seperti RESIBRT001.");
+        }
+
         $tujuanRegion = $request->input('tujuan_region');
 
         $asal = RegionResolver::dariResi($resi);
@@ -97,7 +127,7 @@ class TrackingController extends Controller
         $pdoTujuan = DB::connection($tujuan['nama_koneksi'])->getPdo();
 
         try {
-            // ===== FASE 1: PREPARE di kedua sisi =====
+            // FASE 1: PREPARE di kedua sisi 
             $pdoAsal->exec("BEGIN");
             $pdoAsal->exec("UPDATE kargo SET status = 'Terkirim' WHERE nomor_resi = " . $pdoAsal->quote($resi));
             $pdoAsal->exec("PREPARE TRANSACTION " . $pdoAsal->quote($gid));

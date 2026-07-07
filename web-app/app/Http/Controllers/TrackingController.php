@@ -12,7 +12,9 @@ class TrackingController extends Controller
     // Format resi: RESI + kode region (BRT/TGH/TMR) + 3 digit angka. Contoh: RESIBRT001
     private const POLA_RESI = '/^RESI(BRT|TGH|TMR)[0-9]{3,}$/';
 
+
     // FITUR 1: Distributed Tracking Query (dengan Redis cache)
+
     public function index()
     {
         return view('tracking');
@@ -34,7 +36,7 @@ class TrackingController extends Controller
 
         $cacheKey = "resi:$resi";
 
-        // Global Query Optimization: cek Redis dulu 
+        // ===== Global Query Optimization: cek Redis dulu =====
         $cached = Redis::get($cacheKey);
 
         if ($cached) {
@@ -75,8 +77,8 @@ class TrackingController extends Controller
         ]);
     }
 
-   
     // FITUR 2: Cross-Regional Transaction (Two-Phase Commit)
+
     public function pindahForm()
     {
         return view('pindah_kargo');
@@ -145,9 +147,12 @@ class TrackingController extends Controller
             $pdoTujuan->exec($sql);
             $pdoTujuan->exec("PREPARE TRANSACTION " . $pdoTujuan->quote($gid));
 
-            // ===== FASE 2: COMMIT di kedua sisi =====
+            //FASE 2: COMMIT di kedua sisi
             $pdoAsal->exec("COMMIT PREPARED " . $pdoAsal->quote($gid));
             $pdoTujuan->exec("COMMIT PREPARED " . $pdoTujuan->quote($gid));
+
+            $this->catatLog($gid, $resi, $asal['label'], $tujuan['label'], 'SUKSES', 'Transaksi 2PC berhasil di-commit pada kedua sisi.');
+            $this->kirimNotifikasi("✅ Kargo {$resi} berhasil dipindahkan dari {$asal['label']} ke {$tujuan['label']}.");
 
             return back()->with('success', "Kargo $resi berhasil dipindahkan dari {$asal['label']} ke {$tujuan['label']} (via 2PC).");
 
@@ -158,7 +163,43 @@ class TrackingController extends Controller
             try { $pdoAsal->exec("ROLLBACK"); } catch (\Throwable $e2) {}
             try { $pdoTujuan->exec("ROLLBACK"); } catch (\Throwable $e2) {}
 
+            $this->catatLog($gid, $resi, $asal['label'], $tujuan['label'], 'GAGAL', $e->getMessage());
+            $this->kirimNotifikasi("⚠ Transaksi kargo {$resi} dibatalkan (2PC rollback).");
+
             return back()->with('error', "Transaksi dibatalkan (2PC rollback). Sebab: " . $e->getMessage());
+        }
+    }
+
+    //Mencatat setiap upaya transaksi 2PC (sukses maupun gagal) ke tabel audit di Peladen Pusat
+    private function catatLog(string $gid, string $resi, string $asal, string $tujuan, string $status, string $pesan): void
+    {
+        try {
+            DB::connection('pgsql_pusat')->table('transaksi_log')->insert([
+                'gid' => $gid,
+                'nomor_resi' => $resi,
+                'region_asal' => $asal,
+                'region_tujuan' => $tujuan,
+                'status' => $status,
+                'pesan' => $pesan,
+                'waktu' => now(),
+            ]);
+        } catch (\Throwable $e) {
+            // Kegagalan mencatat log tidak boleh menggagalkan transaksi utama yang sudah selesai
+        }
+    }
+
+    // Mendorong notifikasi ke Redis List sebagai antrean ringan
+    private function kirimNotifikasi(string $pesan): void
+    {
+        try {
+            $payload = json_encode([
+                'pesan' => $pesan,
+                'waktu' => now()->format('H:i:s'),
+            ]);
+            Redis::lpush('notifikasi_gudang', $payload);
+            Redis::ltrim('notifikasi_gudang', 0, 19); // simpan maksimal 20 notifikasi terakhir
+        } catch (\Throwable $e) {
+            // Kegagalan notifikasi tidak boleh menggagalkan transaksi utama
         }
     }
 }

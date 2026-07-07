@@ -314,6 +314,19 @@
         </div>
         <div class="user-info">
             @auth
+                @if (in_array(auth()->user()->role, ['petugas', 'admin']))
+                    <div style="position:relative;">
+                        <button id="bell-btn"
+                            style="background:none;border:none;cursor:pointer;font-size:18px;position:relative;padding:6px;">
+                            🔔
+                            <span id="bell-badge"
+                                style="display:none;position:absolute;top:0;right:0;background:#ef4444;color:white;font-size:10px;font-weight:700;border-radius:999px;padding:1px 5px;">0</span>
+                        </button>
+                        <div id="bell-dropdown"
+                            style="display:none;position:absolute;right:0;top:38px;width:300px;background:white;border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 30px rgba(30,42,74,0.15);padding:10px;z-index:50;max-height:320px;overflow-y:auto;">
+                        </div>
+                    </div>
+                @endif
                 <span style="font-size:14px;font-weight:600;color:var(--ink);">{{ auth()->user()->name }}</span>
                 <span class="role-pill">{{ auth()->user()->role }}</span>
                 <form method="POST" action="{{ route('logout') }}">
@@ -325,6 +338,56 @@
             @endauth
         </div>
     </nav>
+
+    @auth
+        @if (in_array(auth()->user()->role, ['petugas', 'admin']))
+            <script>
+                let notifTerakhirDilihat = 0;
+
+                async function ambilNotifikasi() {
+                    try {
+                        const res = await fetch('{{ route('notifikasi.terbaru') }}');
+                        const data = await res.json();
+
+                        const dropdown = document.getElementById('bell-dropdown');
+                        const badge = document.getElementById('bell-badge');
+
+                        if (data.length === 0) {
+                            dropdown.innerHTML =
+                                '<div style="padding:14px;font-size:13px;color:var(--text-soft);">Belum ada notifikasi.</div>';
+                            badge.style.display = 'none';
+                            return;
+                        }
+
+                        dropdown.innerHTML = data.map(n => `
+                        <div style="padding:10px 12px;border-bottom:1px solid var(--line);font-size:13px;">
+                            <div>${n.pesan}</div>
+                            <div style="font-size:11px;color:var(--text-soft);margin-top:2px;">${n.waktu}</div>
+                        </div>
+                    `).join('');
+
+                        if (data.length > notifTerakhirDilihat) {
+                            badge.textContent = data.length;
+                            badge.style.display = 'inline-block';
+                        }
+                    } catch (e) {
+                        // gagal ambil notifikasi, diam saja agar tidak mengganggu UX
+                    }
+                }
+
+                document.getElementById('bell-btn').addEventListener('click', () => {
+                    const dropdown = document.getElementById('bell-dropdown');
+                    const badge = document.getElementById('bell-badge');
+                    dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+                    badge.style.display = 'none';
+                    notifTerakhirDilihat = 999;
+                });
+
+                ambilNotifikasi();
+                setInterval(ambilNotifikasi, 5000); // polling tiap 5 detik
+            </script>
+        @endif
+    @endauth
 
     <main>
         @if (session('success'))

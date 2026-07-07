@@ -8,7 +8,10 @@ use Illuminate\Support\Facades\DB;
 
 class CargoController extends Controller
 {
-    
+    private const POLA_RESI = '/^RESI(BRT|TGH|TMR)[0-9]{3,}$/';
+
+
+    // FITUR: Tambah Kargo Baru
     public function tambahForm()
     {
         return view('tambah_kargo', ['regions' => RegionResolver::semua()]);
@@ -18,9 +21,13 @@ class CargoController extends Controller
     {
         $request->validate([
             'region_asal' => 'required|in:barat,tengah,timur',
-            'asal_pengiriman' => 'required|string|max:100',
-            'tujuan_pengiriman' => 'required|string|max:100',
-            'berat' => 'required|numeric|min:0.1',
+            'asal_pengiriman' => 'required|string|min:2|max:100|regex:/^[a-zA-Z\s]+$/',
+            'tujuan_pengiriman' => 'required|string|min:2|max:100|regex:/^[a-zA-Z\s]+$/',
+            'berat' => 'required|numeric|min:0.1|max:5000',
+        ], [
+            'asal_pengiriman.regex' => 'Nama kota asal hanya boleh berisi huruf.',
+            'tujuan_pengiriman.regex' => 'Nama kota tujuan hanya boleh berisi huruf.',
+            'berat.max' => 'Berat maksimum per kargo adalah 5000 kg.',
         ]);
 
         $region = RegionResolver::dariKey($request->region_asal);
@@ -61,7 +68,8 @@ class CargoController extends Controller
         return back()->with('success', "Kargo berhasil didaftarkan dengan nomor resi: $nomorResi ({$region['label']})");
     }
 
-  
+
+    // FITUR: Riwayat Pengiriman
     public function riwayatForm()
     {
         return view('riwayat_kargo');
@@ -69,7 +77,16 @@ class CargoController extends Controller
 
     public function riwayatProses(Request $request)
     {
+        $request->validate([
+            'nomor_resi' => ['required', 'string', 'max:20'],
+        ]);
+
         $resi = strtoupper(trim($request->input('nomor_resi')));
+
+        if (!preg_match(self::POLA_RESI, $resi)) {
+            return back()->with('error', "Format nomor resi tidak valid. Gunakan format seperti RESIBRT001.");
+        }
+
         $koneksi = RegionResolver::dariResi($resi);
 
         if (!$koneksi) {

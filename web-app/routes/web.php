@@ -6,7 +6,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CargoController;
 use App\Http\Controllers\MasterDataController;
-
+use App\Http\Controllers\LogController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -40,3 +40,6 @@ Route::get('/kelola-tarif', [MasterDataController::class, 'index'])->middleware(
 Route::post('/kelola-tarif/{id}/update', [MasterDataController::class, 'update'])->middleware('role:admin')->name('master.tarif.update');
 
 Route::get('/kapasitas-gudang', [DashboardController::class, 'kapasitasGudang'])->middleware('role:petugas')->name('kapasitas.gudang');
+
+Route::get('/log-transaksi', [LogController::class, 'transaksi'])->middleware('role:admin')->name('log.transaksi');
+Route::get('/notifikasi-terbaru', [LogController::class, 'notifikasiTerbaru'])->middleware('auth')->name('notifikasi.terbaru');

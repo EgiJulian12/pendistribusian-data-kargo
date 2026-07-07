@@ -297,18 +297,15 @@
                 @php $role = auth()->user()->role; @endphp
                 @if ($role === 'pelanggan')
                     <a href="{{ route('tracking.index') }}">Lacak Kargo</a>
-                    <a href="{{ route('kargo.riwayat.form') }}">Riwayat</a>
                 @endif
                 @if ($role === 'petugas')
                     <a href="{{ route('tracking.index') }}">Lacak Kargo</a>
-                    <a href="{{ route('kargo.tambah.form') }}">Tambah Kargo</a>
-                    <a href="{{ route('kargo.riwayat.form') }}">Riwayat</a>
                     <a href="{{ route('pindah.form') }}">Pindah Kargo</a>
-                    <a href="{{ route('kapasitas.gudang') }}">Kapasitas Gudang</a>
                 @endif
                 @if ($role === 'admin')
                     <a href="{{ route('dashboard.admin') }}">Dashboard Admin</a>
                     <a href="{{ route('master.tarif.index') }}">Kelola Tarif</a>
+                    <a href="{{ route('log.transaksi') }}">Log Transaksi</a>
                 @endif
                 @if ($role === 'eksekutif')
                     <a href="{{ route('dashboard.eksekutif') }}">Dashboard Eksekutif</a>
@@ -335,6 +332,16 @@
         @endif
         @if (session('error'))
             <div class="alert error">⚠ {{ session('error') }}</div>
+        @endif
+        @if ($errors->any())
+            <div class="alert error">
+                ⚠
+                @foreach ($errors->all() as $pesan)
+                    {{ $pesan }}@if (!$loop->last)
+                        <br>
+                    @endif
+                @endforeach
+            </div>
         @endif
 
         @yield('content')

@@ -49,7 +49,7 @@ Tugas UAS Pemrosesan Data Terdistribusi — sistem basis data terdistribusi untu
 
 ```powershell
 git clone https://github.com/EgiJulian12/pendistribusian-data-kargo.git
-cd sistem-logistik-kargo
+cd pendistribusian-data-kargo
 ```
 
 ## Langkah 2 — Jalankan Infrastruktur Docker

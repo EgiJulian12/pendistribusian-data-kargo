@@ -24,7 +24,7 @@ Tugas UAS Pemrosesan Data Terdistribusi — sistem basis data terdistribusi untu
 ├── docker-compose.yml
 ├── nginx/
 │   └── nginx.conf
-├── web-app/                     ← aplikasi Laravel lengkap (ikut ter-clone)
+├── web-app/                     ← aplikasi Laravel
 │   ├── app/
 │   ├── resources/views/
 │   ├── routes/web.php
